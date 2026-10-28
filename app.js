@@ -11,7 +11,7 @@
 // ---------- STATE ----------
 const KEY = 'hybrid-tracker.v1';
 const DEFAULT = {
-  settings: { week: 1, step: 2.5, timer: true },
+  settings: { week: 1, step: 2.5, timer: true, sound: true, voice: true },
   sessions: [],   // {id, date, day, week, lifts:{name:{sets:[{w,r,done}]}}, checks:{key:true}, cardio:{name:{...}}, note}
   drafts: {},     // same shape as session, keyed by day id
   metrics: [],    // {date, week, bw, pullups, ...}
@@ -335,6 +335,9 @@ function viewSettings() {
   <div class="card">
     <div class="set-row"><span>Weight step (kg)</span><select id="stepSel" class="btn">${[1, 1.25, 2, 2.5, 5].map(v => `<option ${v === S.settings.step ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
     <div class="set-row"><span>Auto rest timer</span><button class="tick ${S.settings.timer ? 'on' : ''}" data-act="toggle-timer">✓</button></div>
+    <div class="set-row"><span>Sound when rest ends</span><button class="tick ${S.settings.sound ? 'on' : ''}" data-act="toggle-sound">✓</button></div>
+    <div class="set-row"><span>Voice hype ("Let's go!")</span><button class="tick ${S.settings.voice ? 'on' : ''}" data-act="toggle-voice">✓</button></div>
+    <div class="set-row"><span class="muted small">iPhone: silent switch off to hear it</span><button class="btn" data-act="test-sound">Test sound</button></div>
   </div>
   <div class="card">
     <b>Backup</b>
@@ -421,6 +424,9 @@ document.addEventListener('click', e => {
     }
     case 'del-metric': if (confirm('Delete this entry?')) S.metrics.splice(i, 1); break;
     case 'toggle-timer': S.settings.timer = !S.settings.timer; break;
+    case 'toggle-sound': S.settings.sound = !S.settings.sound; break;
+    case 'toggle-voice': S.settings.voice = !S.settings.voice; break;
+    case 'test-sound': playGo(true); return;
     case 'export': download(`hybrid-backup-${today()}.json`, JSON.stringify(S, null, 1), 'application/json'); return;
     case 'export-csv': download(`hybrid-sets-${today()}.csv`, toCSV(), 'text/csv'); return;
     case 'reset': if (confirm('Are you sure? This deletes everything.') && confirm('Really sure?')) { S = structuredClone(DEFAULT); currentDay = null; } break;
@@ -481,9 +487,9 @@ function toCSV() {
 }
 
 // ---------- REST TIMER ----------
-let timerEnd = 0, timerInt = null;
+let timerEnd = 0, timerInt = null, lastBeep = null;
 function startTimer(sec) {
-  timerEnd = Date.now() + sec * 1000;
+  timerEnd = Date.now() + sec * 1000; lastBeep = null;
   $('#timer').classList.remove('hidden', 'end');
   clearInterval(timerInt); timerInt = setInterval(tickTimer, 250); tickTimer();
 }
@@ -492,13 +498,58 @@ function tickTimer() {
   const el = $('#timer');
   if (left <= 0) {
     $('#tTime').textContent = 'Go!';
-    if (!el.classList.contains('end')) { el.classList.add('end'); navigator.vibrate?.([300, 150, 300]); }
+    if (!el.classList.contains('end')) { el.classList.add('end'); navigator.vibrate?.([300, 150, 300]); playGo(); }
     if (left < -20) stopTimer();
     return;
   }
   $('#tTime').textContent = fmtSec(left).replace(/s$/, '') + (left < 60 ? 's' : '');
+  if (left <= 3 && left !== lastBeep) { lastBeep = left; beep(660, 0.12); } // 3-2-1 countdown
 }
 function stopTimer() { clearInterval(timerInt); $('#timer').classList.add('hidden'); }
+
+// ---------- SOUND ----------
+// Generated with Web Audio (no audio files). Phones only allow sound after a tap,
+// so the audio is "unlocked" on the first tap and reused when the timer ends.
+let actx = null, voiceReady = false;
+function unlockAudio() {
+  try {
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+  } catch (e) {}
+  if (!voiceReady && 'speechSynthesis' in window) { // prime iOS speech with a silent utterance
+    const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); voiceReady = true;
+  }
+}
+document.addEventListener('pointerdown', unlockAudio, { capture: true });
+
+function tone(freq, start, dur, type = 'square', vol = 0.18) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = freq;
+  const t = actx.currentTime + start;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.05);
+}
+function beep(freq, dur) {
+  if (!S.settings.sound || !actx) return;
+  tone(freq, 0, dur, 'sine', 0.25);
+}
+const HYPE = ["Let's go! Next set!", 'Time to work!', 'Get under the bar!', 'Up! One more set!', 'No excuses. Go!', 'Stronger than last time. Go!', 'Lock in. Next set!'];
+function playGo(force) {
+  if ((S.settings.sound || force) && actx) {
+    // short rising fanfare: G-C-E-G ... C
+    [[392, 0, .12], [523, .12, .12], [659, .24, .12], [784, .36, .28], [1047, .66, .5]]
+      .forEach(([f, st, d]) => { tone(f, st, d, 'square', 0.12); tone(f * 2, st, d, 'sine', 0.06); });
+  }
+  if ((S.settings.voice || force) && 'speechSynthesis' in window) {
+    setTimeout(() => {
+      const u = new SpeechSynthesisUtterance(HYPE[Math.floor(Math.random() * HYPE.length)]);
+      u.lang = 'en-US'; u.rate = 1.05; u.pitch = 1.1; u.volume = 1;
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
+    }, 1100);
+  }
+}
 
 // ---------- BOOT ----------
 render();
