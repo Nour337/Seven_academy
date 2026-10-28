@@ -1,1 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Hybrid">
+<title>Hybrid Tracker</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">Hybrid<span>Tracker</span></div>
+  <label class="week-chip">Week
+    <select id="weekSel"></select>
+  </label>
+</header>
 
+<main id="view"></main>
+
+<div id="timer" class="timer hidden">
+  <span class="t-label">Rest</span>
+  <span id="tTime" class="t-time">0:00</span>
+  <button data-act="timer-add">+30s</button>
+  <button data-act="timer-stop">Skip</button>
+</div>
+
+<nav class="tabs">
+  <button data-tab="today" class="on"><b>●</b>Workout</button>
+  <button data-tab="history"><b>≡</b>History</button>
+  <button data-tab="progress"><b>↗</b>Progress</button>
+  <button data-tab="tracker"><b>◎</b>Tests</button>
+  <button data-tab="settings"><b>⚙</b>Settings</button>
+</nav>
+
+<script src="program.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
